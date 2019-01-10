@@ -42,7 +42,7 @@ object LogDown {
 
     val conf = new SparkConf()
       .setAppName("LogDown")
-      .setMaster("local")
+//      .setMaster("local")
 
     val session = SparkSession.builder.config(conf).config("spark.sql.warehouse.dir", warehouseLocation).enableHiveSupport().getOrCreate()
 
@@ -140,38 +140,44 @@ object LogDown {
           while (ite.hasNext) {
 
             val line = ite.next()
+            try {
 
-            val s = line.split("=")
-            if (s.length > 3) {
+              val s = line.split("=")
+              if (s.length > 3) {
 
-              val cv = s(0)
-              val terminal = s(1)
-              val userName = s(2)
+                val cv = s(0)
+                val terminal = s(1)
+                val userName = s(2)
 
-              val log = JSON.parseObject(s(3))
+                val log = JSON.parseObject(s(3))
 
-              val timeStr = HH_yyyyMM_yyyyMMdd.format(yyyy_mm_dd_hh_mm.parse(s(4)))
-              val t = timeStr.split(",")
+                val timeStr = HH_yyyyMM_yyyyMMdd.format(yyyy_mm_dd_hh_mm.parse(s(4)))
+                val t = timeStr.split(",")
 
-              val userPlayTime = log.getString("userPlayTime")
-              val syllabusId = log.getString("syllabusId")
+                val userPlayTime = log.getString("userPlayTime")
+                val syllabusId = log.getString("syllabusId")
 
-              if (syllabusId != null) {
+                if (syllabusId != null) {
 
-                val netClassId = php.getOrElse(parseLong(syllabusId).get, 0L).intValue()
+                  val netClassId = php.getOrElse(parseLong(syllabusId).get, 0L).intValue()
 
-                arr += LogDown(
-                  cv,
-                  parseInt(terminal).get,
-                  userName,
-                  netClassId,
-                  parseInt(syllabusId).get,
-                  parseInt(userPlayTime).get,
-                  parseInt(t(0)).get,
-                  t(1),
-                  t(2),
-                  w)
+                  arr += LogDown(
+                    cv,
+                    parseInt(terminal).get,
+                    userName,
+                    netClassId,
+                    parseInt(syllabusId).get,
+                    parseInt(userPlayTime).get,
+                    parseInt(t(0)).get,
+                    t(1),
+                    t(2),
+                    w)
+                }
               }
+            } catch {
+              case ex: Exception =>
+                println(line)
+                ex.printStackTrace()
             }
           }
 
