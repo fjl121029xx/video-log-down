@@ -42,7 +42,7 @@ object LogDown {
 
     val conf = new SparkConf()
       .setAppName("LogDown")
-//      .setMaster("local")
+      .setMaster("local")
 
     val session = SparkSession.builder.config(conf).config("spark.sql.warehouse.dir", warehouseLocation).enableHiveSupport().getOrCreate()
 
@@ -130,7 +130,11 @@ object LogDown {
 
 
     val vl = videoLog
-
+//      .filter {
+//        f =>
+//          val uname = f.split("=")(2)
+//          uname.equals("app_ztk838836981")
+//      }
       .mapPartitions {
         ite =>
           val arr = new ArrayBuffer[LogDown]()
