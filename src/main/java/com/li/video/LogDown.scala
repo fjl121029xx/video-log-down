@@ -13,7 +13,6 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 
 import scala.collection.mutable.ArrayBuffer
 
-
 case class LogDown(cv: String,
                    terminale: Int,
                    uname: String,
@@ -29,8 +28,7 @@ case class LogDown(cv: String,
 object LogDown {
 
   val fs = FileSystem.get(Tools.Configuration)
-  val yyyy_mm_dd_hh_mm = new SimpleDateFormat("yyyy_MM_dd_HH_mm")
-  val HH_yyyyMM_yyyyMMdd = new SimpleDateFormat("HH,yyyyMM,yyyyMMdd")
+
   val yyyyMMdd = new SimpleDateFormat("yyyyMMdd")
 
 
@@ -38,15 +36,45 @@ object LogDown {
 
     System.setProperty("HADOOP_USER_NAME", "root")
 
+    val baseHdfs = "hdfs://ns1/huatu-data/video-record/flume/"
+    val flumeFormat = new SimpleDateFormat("yyyy/MM/dd")
+
+    var l = System.currentTimeMillis()
+
+    if (args.length == 2) {
+      l = args(0).toLong
+    }
+
+    if (args.length == 2 && args(1).eq("1")) {
+      l = System.currentTimeMillis() - 2 * 24 * 60 ^ 60 * 1000L
+    }
+
     val warehouseLocation = new File("spark-warehouse").getAbsolutePath
+
+    val weekStart = getWeekStart(yyyyMMdd.format(new Date(l)))
+
+    val arr = new ArrayBuffer[String]()
+    for (i <- 0 to 6) {
+
+      arr += flumeFormat.format(new Date(weekStart + i * 24 * 60 * 60 * 1000))
+
+      if (!fs.exists(new Path(baseHdfs + "" + arr(i) + ""))) {
+        fs.mkdirs(new Path(baseHdfs + "" + arr(i) + ""))
+      }
+    }
 
     val conf = new SparkConf()
       .setAppName("LogDown")
-      .setMaster("local")
+    //      .setMaster("local[6]")
 
     val session = SparkSession.builder.config(conf).config("spark.sql.warehouse.dir", warehouseLocation).enableHiveSupport().getOrCreate()
 
-    var options: Map[String, String] = Map(
+    val sc = session.sparkContext
+    import session.implicits._
+
+    val ws = sc.broadcast(weekStart)
+
+    val options: Map[String, String] = Map(
       "url" -> "jdbc:mysql://192.168.100.211:3309/htolmain_new?characterEncoding=UTF-8&transformedBitIsBoolean=false&tinyInt1isBit=false",
       "dbtable" -> "syllabus",
       "user" -> "htwx",
@@ -55,9 +83,6 @@ object LogDown {
     // syllabus
     val syllabus = session.read.format("jdbc").options(options).load
     syllabus.createOrReplaceTempView("syllabus")
-
-    val sc = session.sparkContext
-    import session.implicits._
 
     val map = sc.broadcast(session.sql(" " +
       " SELECT id as syllabusId,net_class_id as netClassId from syllabus ")
@@ -92,34 +117,6 @@ object LogDown {
 
       }.rdd.collectAsMap())
 
-
-    val baseHdfs = "hdfs://ns1/huatu-data/video-record/flume/"
-    val flumeFormat = new SimpleDateFormat("yyyy/MM/dd")
-
-    var l = System.currentTimeMillis()
-
-    if (args.length == 2) {
-      l = args(0).toLong
-    }
-
-    if (args.length == 2 && args(1).eq("1")) {
-      l = System.currentTimeMillis() - 2 * 24 * 60 ^ 60 * 1000L
-    }
-
-    val weekStart = getWeekStart(yyyyMMdd.format(new Date(l)))
-
-    val ws = sc.broadcast(weekStart)
-
-    val arr = new ArrayBuffer[String]()
-    for (i <- 0 to 6) {
-
-      arr += flumeFormat.format(new Date(weekStart + i * 24 * 60 * 60 * 1000))
-
-      if (!fs.exists(new Path(baseHdfs + "" + arr(i) + ""))) {
-        fs.mkdirs(new Path(baseHdfs + "" + arr(i) + ""))
-      }
-    }
-
     val videoLog = sc.textFile(baseHdfs + arr(0))
       .++(sc.textFile(baseHdfs + arr(1)))
       .++(sc.textFile(baseHdfs + arr(2)))
@@ -128,65 +125,68 @@ object LogDown {
       .++(sc.textFile(baseHdfs + arr(5)))
       .++(sc.textFile(baseHdfs + arr(6)))
 
-
     val vl = videoLog
-//      .filter {
-//        f =>
-//          val uname = f.split("=")(2)
-//          uname.equals("app_ztk838836981")
-//      }
+      //      .filter {
+      //        f =>
+      //          val uname = f.split("=")(2)
+      //          uname.equals("app_ztk838836981")
+      //      }
       .mapPartitions {
-        ite =>
-          val arr = new ArrayBuffer[LogDown]()
-          val php = map.value
+      ite =>
+        val arr = new ArrayBuffer[LogDown]()
+        val php = map.value
 
-          val w = ws.value
-          while (ite.hasNext) {
+        val w = ws.value
 
-            val line = ite.next()
-            try {
+        val yyyy_mm_dd_hh_mm = new SimpleDateFormat("yyyy_MM_dd_HH_mm")
+        val HH_yyyyMM_yyyyMMdd = new SimpleDateFormat("HH,yyyyMM,yyyyMMdd")
 
-              val s = line.split("=")
-              if (s.length > 3) {
+        while (ite.hasNext) {
 
-                val cv = s(0)
-                val terminal = s(1)
-                val userName = s(2)
+          val line = ite.next()
+          try {
 
-                val log = JSON.parseObject(s(3))
+            val s = line.split("=")
+            if (s.length > 3) {
 
-                val timeStr = HH_yyyyMM_yyyyMMdd.format(yyyy_mm_dd_hh_mm.parse(s(4)))
-                val t = timeStr.split(",")
+              val cv = s(0)
+              val terminal = s(1)
+              val userName = s(2)
 
-                val userPlayTime = log.getString("userPlayTime")
-                val syllabusId = log.getString("syllabusId")
+              val log = JSON.parseObject(s(3))
 
-                if (syllabusId != null) {
+              val timeStr = HH_yyyyMM_yyyyMMdd.format(yyyy_mm_dd_hh_mm.parse(s(4)))
+              val t = timeStr.split(",")
 
-                  val netClassId = php.getOrElse(parseLong(syllabusId).get, 0L).intValue()
+              val userPlayTime = log.getString("userPlayTime")
+              val syllabusId = log.getString("syllabusId")
 
-                  arr += LogDown(
-                    cv,
-                    parseInt(terminal).get,
-                    userName,
-                    netClassId,
-                    parseInt(syllabusId).get,
-                    parseInt(userPlayTime).get,
-                    parseInt(t(0)).get,
-                    t(1),
-                    t(2),
-                    w)
-                }
+              if (syllabusId != null) {
+
+                val netClassId = php.getOrElse(parseLong(syllabusId).get, 0L).intValue()
+
+                arr += LogDown(
+                  cv,
+                  parseInt(terminal).get,
+                  userName,
+                  netClassId,
+                  parseInt(syllabusId).get,
+                  parseInt(userPlayTime).get,
+                  parseInt(t(0)).get,
+                  t(1),
+                  t(2),
+                  w)
               }
-            } catch {
-              case ex: Exception =>
-                println(line)
-                ex.printStackTrace()
             }
+          } catch {
+            case ex: Exception =>
+              println(line)
+              ex.printStackTrace()
           }
+        }
 
-          arr.iterator
-      }.toDF()
+        arr.iterator
+    }.toDF()
 
     vl.repartition(1)
       .write
@@ -197,7 +197,8 @@ object LogDown {
   }
 
   def getWeekStart(today: String): Long = {
-    var currentDate = new GregorianCalendar
+
+    val currentDate = new GregorianCalendar
     currentDate.setTime(new SimpleDateFormat("yyyyMMdd").parse(today))
 
     currentDate.setFirstDayOfWeek(Calendar.MONDAY)
@@ -208,7 +209,6 @@ object LogDown {
     currentDate.set(Calendar.MILLISECOND, 0)
     currentDate.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
     currentDate.getTime.getTime
-
   }
 
   def parseLong(s: String): Option[Long] = try {
