@@ -18,4 +18,4 @@ hive -S -e "load data inpath 'hdfs://ns1/huatu-data/video-record/flume/mr/154618
 hive -S -e "insert overwrite table videoplay2 partition(playweek)
  select cv,terminale,uname,netClassId,syllabusid,playtime,playhour,playmonth,
  cast(playday as string) as playday,title,syname,
- playweek  as playweek from vp;"
+ playweek  as playweek from vp sort by uname;"

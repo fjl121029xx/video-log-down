@@ -51,7 +51,7 @@ object LogDown {
       l = System.currentTimeMillis() - 2 * 24 * 60 ^ 60 * 1000L
     }
 
-//    l = 1544371200000L
+    l = 1544976000000L
     val warehouseLocation = new File("spark-warehouse").getAbsolutePath
 
     val weekStart = getWeekStart(yyyyMMdd.format(new Date(l)))
